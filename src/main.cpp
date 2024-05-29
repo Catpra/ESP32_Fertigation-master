@@ -42,7 +42,7 @@ const char* password = "g47=m249";
 // const char* weatherApiUrl = "http://api.openweathermap.org/data/2.5/weather?q=your_city&units=metric&appid=";
 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600, 60000); // 1 hour offset, 60s update interval
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 25200, 60000); // 1 hour offset, 60s update interval
 
 FertigationOutput fertigationOutput;
 Ticker ticker;
@@ -65,7 +65,7 @@ Ticker ledBlinkOff;
 //   http.end();
 // }
 void updateDisplay() {
-    DateTime now = rtc.now();
+  DateTime now = rtc.now();
 
   //buat ngecek apakah waktu sudah di set atau belum di local
   Serial.print("RTC time: ");
@@ -126,6 +126,9 @@ void onTimer() {
 void setup() {
     pinMode(MOTOR_PIN, OUTPUT);
     pinMode(LED_BLINK_PIN, OUTPUT);
+    pinMode(arOutputsPin[27], OUTPUT);
+    pinMode(arOutputsPin[26], OUTPUT);
+    pinMode(arOutputsPin[25], OUTPUT);
     delay(100);
     Serial.begin(115200);
 
@@ -143,7 +146,7 @@ void setup() {
       }
     delay(2000);
     Serial.println("Connecting to WiFi...");
-  }
+    }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("Connected to WiFi");
      // Initialize NTP client
@@ -195,7 +198,7 @@ void loop() {
 //      rtc.adjust(DateTime(timeClient.getEpochTime()));
 //}
 
-//updateDateTimeDisplay();
+  //updateDateTimeDisplay();
   fertigationOutput.update();
   //updateDisplay();
 }
