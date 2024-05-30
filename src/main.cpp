@@ -143,12 +143,21 @@ void checkWateringSchedule(DateTime now) {
 
         }
     }
+ display.update();
 }
 
 void loop() {
+    static int lastMinute = -1;
     DateTime now = rtc.now();
-    Serial.print("RTC time: ");
-    Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
+
+    if (now.minute() != lastMinute) {
+        lastMinute = now.minute();
+
+        Serial.print("RTC time: ");
+        Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
+
+        updateDisplay();
+    }
     checkWateringSchedule(now);
     delay(1000);
 }
