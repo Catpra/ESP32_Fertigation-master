@@ -19,6 +19,7 @@ Example:
 #include <RTClib.h>
 #include "lilygo-t5_v23.h"
 #include "FertigationOutput.h"
+#include "Scheduler.h"
 
 RTC_DS3231 rtc;
 
@@ -33,7 +34,10 @@ SPIClass  SDSPI(VSPI);
 const uint8_t arOutputsPin[NUM_OUTPUS] = {27, 26, 25};
 
 //durasi output dalam milisecond
-uint16_t arOutputOnDuration[NUM_OUTPUS] = {8000, 8000, 8000};
+uint16_t arOutputOnDuration;
+
+FertigationOutput fertigationOutput;
+Scheduler scheduler(fertigationOutput);
 
 const char* ssid     = "POCOF4";
 const char* password = "g47=m249";
@@ -44,7 +48,6 @@ const char* password = "g47=m249";
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 25200, 60000); // 1 hour offset, 60s update interval
 
-FertigationOutput fertigationOutput;
 Ticker ticker;
 Ticker ledBlinkOff;
 
@@ -122,7 +125,8 @@ void onTimer() {
   updateDisplay();
 }
 
-//String message;
+
+
 void setup() {
     pinMode(MOTOR_PIN, OUTPUT);
     pinMode(LED_BLINK_PIN, OUTPUT);
@@ -155,13 +159,16 @@ void setup() {
     //buat ngecek apakah waktu sudah di set atau belum
     Serial.print("NTP time: ");
     Serial.println(timeClient.getFormattedTime());
-  // Set RTC time
+    // Set RTC time
      rtc.adjust(DateTime(timeClient.getEpochTime()));
    }
+  scheduler.addTask(27, 3000, 13, 28); // Task 1: Turn on output 27 at 13:28 for 3000 ms
+  scheduler.addTask(26, 3000, 13, 31); // Task 2: Turn on output 26 at 13:31 for 3000 ms
+  scheduler.addTask(25, 3000, 13, 40); // Task 3: Turn on output 25 at 13:40 for 3000 ms
 
-    for (uint8_t i = 0; i < NUM_OUTPUS; i++) {
-      fertigationOutput.addSolenoidOutput(arOutputsPin[i], arOutputOnDuration[i]);
-    }
+    // for (uint8_t i = 0; i < NUM_OUTPUS; i++) {
+    //   fertigationOutput.addSolenoidOutput(arOutputsPin[i], arOutputOnDuration[i]);
+    // }
     // this will turn on motor pump after 200ms and turn off after 500ms
     fertigationOutput.setMotorPumpPin(MOTOR_PIN, 200, 500);
     ticker.attach(5, onTimer); // every 5s
@@ -173,6 +180,7 @@ void setup() {
     display.setFont(&FreeMonoBold9pt7b);
 
     display.update();
+
 Serial.println("Setup done");
 }
 
@@ -197,8 +205,10 @@ void loop() {
 //      // Adjust RTC if necessary
 //      rtc.adjust(DateTime(timeClient.getEpochTime()));
 //}
-
+  DateTime now = rtc.now();
+  uint8_t currentHour = now.hour();
+  uint8_t currentMinute = now.minute();
+  scheduler.checkTasks(currentHour, currentMinute);
   //updateDateTimeDisplay();
-  fertigationOutput.update();
   //updateDisplay();
 }

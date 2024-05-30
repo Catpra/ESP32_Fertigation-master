@@ -1,33 +1,20 @@
 #include "Scheduler.h"
-#include "FertigationOutput.h"
 
-Scheduler::Scheduler(uint8_t numTasks) {
-  this->numTasks = numTasks;
-  this->tasks = new Task[numTasks];
-}
+Scheduler::Scheduler(FertigationOutput& fertigationOutput) : m_taskCount(0), m_fertigationOutput(fertigationOutput) {}
 
-Scheduler::~Scheduler() {
-  delete[] this->tasks;
-}
-
-void Scheduler::addTask(uint8_t index, uint8_t channel, uint16_t duration, uint8_t hour, uint8_t minute) {
-  if (index < numTasks) {
-    hour = hour % 24; // Ensure hour is within 0-23 range
-    tasks[index] = {channel, duration, hour, minute};
+void Scheduler::addTask(uint8_t pin, uint16_t duration, uint8_t hour, uint8_t minute) {
+  if (m_taskCount < MAX_TASKS) {
+    m_tasks[m_taskCount] = {pin, duration, hour, minute, false};
+    m_taskCount++;
+    m_fertigationOutput.addSolenoidOutput(pin, duration);
   }
 }
 
-#include "FertigationOutput.h" // Add missing import
-
-extern uint8_t arOutputsPin[]; // Add missing declaration
-
 void Scheduler::checkTasks(uint8_t currentHour, uint8_t currentMinute) {
-  for (uint8_t i = 0; i < numTasks; i++) {
-    if (tasks[i].hour == currentHour && tasks[i].minute == currentMinute) {
-      digitalWrite(arOutputsPin[tasks[i].channel], HIGH);
-      delay(tasks[i].duration);
-      digitalWrite(arOutputsPin[tasks[i].channel], LOW);
+  for (uint8_t i = 0; i < m_taskCount; i++) {
+    if (!m_tasks[i].executed && m_tasks[i].hour == currentHour && m_tasks[i].minute == currentMinute) {
+      m_fertigationOutput.addSolenoidOutput(m_tasks[i].pin, m_tasks[i].duration);
+      m_tasks[i].executed = true;
     }
   }
 }
-
