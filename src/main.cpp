@@ -7,12 +7,17 @@
 #include <WiFiUdp.h>
 #include <RTClib.h>
 #include "lilygo-t5_v23.h"
-#include "FertigationOutput.h"
 
 RTC_DS3231 rtc;
 
+
 GxIO_Class io(SPI,  EPD_CS, EPD_DC,  EPD_RSET);
 GxEPD_Class display(io, EPD_RSET, EPD_BUSY);
+
+const int pumpPin = 12;
+const int valve1Pin = 27;
+const int valve2Pin = 26;
+const int valve3Pin = 25;
 
 SPIClass  SDSPI(VSPI);
 
@@ -20,22 +25,18 @@ const char* ssid = "POCOF4";
 const char* password = "g47=m249";
 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600, 60000);
-
-const int pumpPin = 12;
-const int valve1Pin = 27;
-const int valve2Pin = 26;
-const int valve3Pin = 25;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 25200, 60000);
 
 struct WateringSchedule {
     int hour;
     int minute;
     int duration; // in minutes
-}; // Added semicolon here
+    bool done;
+};
 
 WateringSchedule schedule[] = {
-    {1, 42, 1}, // Water at 6:00 AM for 10 minutes
-    {1, 44, 1} // Water at 6:00 PM for 10 minutes
+    {8, 47, 1, false},
+    {8, 48, 1, false} 
 };
 
 void updateDisplay() { // Added parameter here
@@ -79,7 +80,7 @@ void updateDisplay() { // Added parameter here
     } else {
         display.println("Valve 3: OFF");
     }
-    display.update();
+    // display.update();
 }
 
 
@@ -128,11 +129,19 @@ void setup() {
 
 void checkWateringSchedule(DateTime now) {
     for (auto& entry : schedule) {
-        if (now.hour() == entry.hour && now.minute() == entry.minute) {
+        if (!entry.done && 
+            ((now.hour() > entry.hour) || 
+            (now.hour() == entry.hour && now.minute() >= entry.minute)) && 
+            (now.hour() < entry.hour || (now.hour() == entry.hour && now.minute() < entry.minute + entry.duration))) {
+
+            Serial.println("Watering triggered");
+
             digitalWrite(pumpPin, HIGH);
             digitalWrite(valve1Pin, HIGH);
             digitalWrite(valve2Pin, HIGH);
             digitalWrite(valve3Pin, HIGH);
+
+            Serial.println("Watering started");
 
             delay(entry.duration * 60000);
 
@@ -141,23 +150,27 @@ void checkWateringSchedule(DateTime now) {
             digitalWrite(valve2Pin, LOW);
             digitalWrite(valve3Pin, LOW);
 
+            Serial.println("Watering stopped");
+
+            entry.done = true;
         }
     }
- display.update();
+display.update();
 }
 
 void loop() {
-    static int lastMinute = -1;
+    static int lastDay = -1;
     DateTime now = rtc.now();
 
-    if (now.minute() != lastMinute) {
-        lastMinute = now.minute();
+    if (now.day() != lastDay) {
+        lastDay = now.day();
 
-        Serial.print("RTC time: ");
-        Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
-
-        updateDisplay();
+        // Reset the done flags at the start of each day
+        for (auto& entry : schedule) {
+            entry.done = false;
+        }
     }
     checkWateringSchedule(now);
+    updateDisplay();
     delay(1000);
 }
