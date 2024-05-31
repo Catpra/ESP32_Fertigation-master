@@ -35,8 +35,8 @@ struct WateringSchedule {
 };
 
 WateringSchedule schedule[] = {
-    {9, 6, 1, false},
-    {9, 8, 1, false} 
+    {8, 47, 1, false},
+    {8, 48, 1, false} 
 };
 
 void updateDisplay() { // Added parameter here
