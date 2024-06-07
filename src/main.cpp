@@ -31,12 +31,13 @@ struct WateringSchedule {
     int hour;
     int minute;
     int duration; // in minutes
+    int valve;
     bool done;
 };
 
 WateringSchedule schedule[] = {
-    {8, 47, 1, false},
-    {8, 48, 1, false} 
+    {8, 47, 1, 1, false},
+    {8, 48, 1, 2, false} 
 };
 
 void updateDisplay() { // Added parameter here
@@ -128,6 +129,8 @@ void setup() {
 
 
 void checkWateringSchedule(DateTime now) {
+    bool valveOpened = false; // added valveOpened variable
+
     for (auto& entry : schedule) {
         if (!entry.done && 
             ((now.hour() > entry.hour) || 
@@ -136,12 +139,25 @@ void checkWateringSchedule(DateTime now) {
 
             Serial.println("Watering triggered");
 
-            digitalWrite(pumpPin, HIGH);
-            digitalWrite(valve1Pin, HIGH);
-            digitalWrite(valve2Pin, HIGH);
-            digitalWrite(valve3Pin, HIGH);
+            switch (entry.valve) { // added switch statement for valve control
+                case 1:
+                    digitalWrite(valve1Pin, HIGH);
+                    valveOpened = true;
+                    break;
+                case 2:
+                    digitalWrite(valve2Pin, HIGH);
+                    valveOpened = true;
+                    break;
+                case 3:
+                    digitalWrite(valve3Pin, HIGH);
+                    valveOpened = true;
+                    break;
+            }
 
-            Serial.println("Watering started");
+            if (valveOpened) { // only run pump if a valve is opened
+                digitalWrite(pumpPin, HIGH);
+                Serial.println("Pump and valve started");
+            }
 
             delay(entry.duration * 60000);
 
@@ -150,7 +166,7 @@ void checkWateringSchedule(DateTime now) {
             digitalWrite(valve2Pin, LOW);
             digitalWrite(valve3Pin, LOW);
 
-            Serial.println("Watering stopped");
+            Serial.println("Pump and valve stopped");
 
             entry.done = true;
         }
