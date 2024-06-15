@@ -19,6 +19,8 @@ const int valve1Pin = 27;
 const int valve2Pin = 26;
 const int valve3Pin = 25;
 
+unsigned long duration;
+
 SPIClass  SDSPI(VSPI);
 
 const char* ssid = "POCOF4";
@@ -128,6 +130,7 @@ void setup() {
 }
 
 
+
 void checkWateringSchedule(DateTime now) {
     bool valveOpened = false; // added valveOpened variable
 
@@ -154,12 +157,16 @@ void checkWateringSchedule(DateTime now) {
                     break;
             }
 
-            if (valveOpened) { // only run pump if a valve is opened
+            if (valveOpened) {
                 digitalWrite(pumpPin, HIGH);
+                digitalWrite(valve1Pin, HIGH);
                 Serial.println("Pump and valve started");
+                startMillis = millis();
+                duration = entry.duration * 60000; // Store duration
+                state = PUMP_AND_VALVE_STARTED;
             }
 
-            delay(entry.duration * 60000);
+
 
             digitalWrite(pumpPin, LOW);
             digitalWrite(valve1Pin, LOW);
@@ -171,22 +178,27 @@ void checkWateringSchedule(DateTime now) {
             entry.done = true;
         }
     }
-display.update();
 }
 
+enum State {
+    IDLE,
+    PUMP_AND_VALVE_STARTED,
+    PUMP_AND_VALVE_RUNNING,
+    PUMP_AND_VALVE_STOPPED
+};
+
+State state = IDLE;
+unsigned long startMillis;
+
 void loop() {
-    static int lastDay = -1;
     DateTime now = rtc.now();
-
-    if (now.day() != lastDay) {
-        lastDay = now.day();
-
-        // Reset the done flags at the start of each day
-        for (auto& entry : schedule) {
-            entry.done = false;
-        }
-    }
     checkWateringSchedule(now);
+
+    switch (state) {
+        case PUMP_AND_VALVE_STARTED:
+          if (millis() - startMillis < duration) {
+                state = PUMP_AND_VALVE_RUNNING;
+            }
+    }
     updateDisplay();
-    delay(1000);
 }
