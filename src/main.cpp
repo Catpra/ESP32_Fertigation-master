@@ -1,204 +1,77 @@
 #include <Arduino.h>
-#include <Ticker.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include <SPI.h>
-#include <Wire.h>
-#include <WiFi.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
-#include <RTClib.h>
-#include "lilygo-t5_v23.h"
+#include <GxEPD2_BW.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
 
-RTC_DS3231 rtc;
+BLEServer* pServer = NULL;
+BLECharacteristic* pCharacteristic = NULL;
+bool deviceConnected = false;
 
+// UUIDs for the BLE Service and Characteristics
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-GxIO_Class io(SPI,  EPD_CS, EPD_DC,  EPD_RSET);
-GxEPD_Class display(io, EPD_RSET, EPD_BUSY);
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
 
-const int pumpPin = 12;
-const int valve1Pin = 27;
-const int valve2Pin = 26;
-const int valve3Pin = 25;
-
-unsigned long duration;
-
-SPIClass  SDSPI(VSPI);
-
-const char* ssid = "POCOF4";
-const char* password = "g47=m249";
-
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 25200, 60000);
-
-struct WateringSchedule {
-    int hour;
-    int minute;
-    int duration; // in minutes
-    int valve;
-    bool done;
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
 };
 
-WateringSchedule schedule[] = {
-    {8, 47, 1, 1, false},
-    {8, 48, 1, 2, false} 
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string value = pCharacteristic->getValue();
+      if (value.length() > 0) {
+        Serial.println("*********");
+        Serial.print("Received Value: ");
+        for (int i = 0; i < value.length(); i++)
+          Serial.print(value[i]);
+
+        Serial.println();
+        Serial.println("*********");
+      }
+    }
 };
-
-void updateDisplay() { // Added parameter here
-    DateTime now = rtc.now();
-
-    Serial.print("RTC time: ");
-    Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
-
-    char dateTime[20];
-    sprintf(dateTime, "%02d/%02d/%04d %02d:%02d:%02d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second());
-
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);
-    display.setFont(&FreeMonoBold9pt7b);
-    display.setCursor(0, 15);
-    display.println("Yayasan Kebon Dalem");
-    display.setCursor(0, 30);
-    display.println(dateTime);
-
-    if (digitalRead(12) == HIGH) {
-        display.println("Pump: ON");
-    } 
-    else {
-        display.println("Pump: OFF");
-    }
-
-    if (digitalRead(27) == HIGH) {
-        display.println("Valve 1: ON");
-    } else {
-        display.println("Valve 1: OFF");
-    }
-
-    if (digitalRead(26) == HIGH) {
-        display.println("Valve 2: ON");
-    } else {
-        display.println("Valve 2: OFF");
-    }
-
-    if (digitalRead(25) == HIGH) {
-        display.println("Valve 3: ON");
-    } else {
-        display.println("Valve 3: OFF");
-    }
-    // display.update();
-}
-
 
 void setup() {
-    pinMode(pumpPin, OUTPUT);
-    pinMode(valve1Pin, OUTPUT);
-    pinMode(valve2Pin, OUTPUT);
-    pinMode(valve3Pin, OUTPUT);
-    Serial.begin(115200);
+  Serial.begin(115200);
+  Serial.println("Starting BLE work!");
 
-    if (!rtc.begin()) {
-      Serial.println("Couldn't find RTC"); 
-    }
+  BLEDevice::init("ESP32_Test");
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    unsigned long startTime = millis();
-    while (WiFi.status() != WL_CONNECTED) {
-      if (millis() - startTime > 10000) { // 10 seconds timeout
-          Serial.println("Failed to connect to WiFi within 10 seconds.");
-          break;
-      }
-    delay(2000);
-    Serial.println("Connecting to WiFi...");
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("Connected to WiFi");
-     // Initialize NTP client
-    timeClient.begin();
-    timeClient.update();
-    //buat ngecek apakah waktu sudah di set atau belum
-    Serial.print("NTP time: ");
-    Serial.println(timeClient.getFormattedTime());
-  // Set RTC time
-     rtc.adjust(DateTime(timeClient.getEpochTime()));
-   }
-    SPI.begin(EPD_SCLK, EPD_MISO, EPD_MOSI);
-    display.init(); // enable diagnostic output on Serial
-    display.setRotation(1);
-    display.setFont(&FreeMonoBold9pt7b);
+  BLEService *pService = pServer->createService(SERVICE_UUID);
 
-    display.update();
-    Serial.println("Setup done");
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE
+                    );
+
+  pCharacteristic->setCallbacks(new MyCallbacks());
+  pCharacteristic->setValue("Hello World");
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.println("Characteristic defined! Now you can read it in your phone!");
 }
-
-
-
-void checkWateringSchedule(DateTime now) {
-    bool valveOpened = false; // added valveOpened variable
-
-    for (auto& entry : schedule) {
-        if (!entry.done && 
-            ((now.hour() > entry.hour) || 
-            (now.hour() == entry.hour && now.minute() >= entry.minute)) && 
-            (now.hour() < entry.hour || (now.hour() == entry.hour && now.minute() < entry.minute + entry.duration))) {
-
-            Serial.println("Watering triggered");
-
-            switch (entry.valve) { // added switch statement for valve control
-                case 1:
-                    digitalWrite(valve1Pin, HIGH);
-                    valveOpened = true;
-                    break;
-                case 2:
-                    digitalWrite(valve2Pin, HIGH);
-                    valveOpened = true;
-                    break;
-                case 3:
-                    digitalWrite(valve3Pin, HIGH);
-                    valveOpened = true;
-                    break;
-            }
-
-            if (valveOpened) {
-                digitalWrite(pumpPin, HIGH);
-                digitalWrite(valve1Pin, HIGH);
-                Serial.println("Pump and valve started");
-                startMillis = millis();
-                duration = entry.duration * 60000; // Store duration
-                state = PUMP_AND_VALVE_STARTED;
-            }
-
-
-
-            digitalWrite(pumpPin, LOW);
-            digitalWrite(valve1Pin, LOW);
-            digitalWrite(valve2Pin, LOW);
-            digitalWrite(valve3Pin, LOW);
-
-            Serial.println("Pump and valve stopped");
-
-            entry.done = true;
-        }
-    }
-}
-
-enum State {
-    IDLE,
-    PUMP_AND_VALVE_STARTED,
-    PUMP_AND_VALVE_RUNNING,
-    PUMP_AND_VALVE_STOPPED
-};
-
-State state = IDLE;
-unsigned long startMillis;
 
 void loop() {
-    DateTime now = rtc.now();
-    checkWateringSchedule(now);
+  // if (deviceConnected) {
 
-    switch (state) {
-        case PUMP_AND_VALVE_STARTED:
-          if (millis() - startMillis < duration) {
-                state = PUMP_AND_VALVE_RUNNING;
-            }
-    }
-    updateDisplay();
+  // }
+  // delay(1000);
 }
